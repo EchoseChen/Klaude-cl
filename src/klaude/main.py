@@ -1,5 +1,5 @@
 import click
-from claude_code_cli.agent import Agent
+from klaude.agent import Agent
 
 
 @click.command()

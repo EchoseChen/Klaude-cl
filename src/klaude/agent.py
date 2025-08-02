@@ -5,7 +5,7 @@ from openai import OpenAI
 from rich.console import Console
 from rich.markdown import Markdown
 from dotenv import load_dotenv
-from claude_code_cli.tools import BashTool
+from klaude.tools import BashTool
 
 # 加载.env文件
 load_dotenv()

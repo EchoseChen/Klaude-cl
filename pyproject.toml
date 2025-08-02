@@ -1,5 +1,5 @@
 [project]
-name = "claude-code-cli"
+name = "klaude"
 version = "0.1.0"
 description = "A CLI agent similar to Claude Code"
 readme = "README.md"
@@ -12,7 +12,7 @@ dependencies = [
 ]
 
 [project.scripts]
-cc = "claude_code_cli.main:main"
+klaude = "klaude.main:main"
 
 [build-system]
 requires = ["hatchling"]
