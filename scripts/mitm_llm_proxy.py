@@ -13,7 +13,7 @@ from mitmproxy.http import HTTPFlow
 
 class LLMProxyCapture:
     def __init__(self):
-        self.log_dir = "request_logsa"
+        self.log_dir = "request_logs"
         os.makedirs(self.log_dir, exist_ok=True)
     
     def request(self, flow: HTTPFlow) -> None:
