@@ -14,6 +14,7 @@ import platform
 import subprocess
 from datetime import datetime
 from typing import List, Dict, Any
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from openai import OpenAI
 from rich.console import Console
 from rich.markdown import Markdown
@@ -432,9 +433,21 @@ assistant: Clients are marked as failed in the `connectToServer` function in src
                 if assistant_message.content:
                     self._display_assistant_message(assistant_message.content)
                 
-                # Execute tool calls
-                for tool_call in assistant_message.tool_calls:
-                    self._execute_tool_call(tool_call)
+                # Execute tool calls concurrently
+                with ThreadPoolExecutor() as executor:
+                    # Submit all tool calls to the executor
+                    future_to_tool_call = {
+                        executor.submit(self._execute_tool_call, tool_call): tool_call
+                        for tool_call in assistant_message.tool_calls
+                    }
+                    
+                    # Process results as they complete
+                    for future in as_completed(future_to_tool_call):
+                        tool_call = future_to_tool_call[future]
+                        try:
+                            future.result()
+                        except Exception as exc:
+                            self.console.print(f"[red]Tool '{tool_call.function.name}' generated an exception: {exc}[/red]")
             
             else:
                 self.console.print("[red]Unexpected response from API[/red]")
