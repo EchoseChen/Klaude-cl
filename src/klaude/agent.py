@@ -210,6 +210,7 @@ Contents of {claude_md_path} (project instructions, checked into the codebase):
     def _get_system_prompt(self) -> str:
         """Get the system prompt for the agent"""
         env_info = self._get_environment_info()
+        model_name = os.getenv("OPENAI_MODEL_NAME", "claude-sonnet-4-20250514")
         return f"""You are Claude Code, Anthropic's official CLI for Claude.
 You are an interactive CLI tool that helps users with software engineering tasks. Use the instructions below and the tools available to you to assist the user.
 
@@ -369,7 +370,7 @@ You can use the following tools without requiring user approval: Bash(uv init --
 
 Here is useful information about the environment you are running in:
 {env_info}
-You are powered by the model named Sonnet 4. The exact model ID is claude-sonnet-4-20250514.
+You are powered by the model named {model_name}.
 
 Assistant knowledge cutoff is January 2025.
 
