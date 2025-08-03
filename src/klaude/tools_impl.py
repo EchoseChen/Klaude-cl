@@ -18,6 +18,7 @@ import fnmatch
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Union
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import ast
 import shutil
 import tempfile
@@ -45,6 +46,17 @@ class TaskTool(ToolBase):
             name="Task",
             description=self._build_description()
         )
+    
+    def _execute_tool_for_subagent(self, sub_agent, tool_call):
+        """Execute a single tool call for a subagent and return (tool_call_id, result)"""
+        tool_name = tool_call.function.name
+        tool_args = json.loads(tool_call.function.arguments)
+        
+        try:
+            result = sub_agent.tool_registry.execute_tool(tool_name, **tool_args)
+            return tool_call.id, result
+        except Exception as e:
+            raise e
     
     def get_parameters_schema(self) -> Dict[str, Any]:
         return create_json_schema(
@@ -188,28 +200,35 @@ assistant: "I'm going to use the Task tool to launch the with the greeting-respo
                 
                 # Execute tool calls if any
                 if response.choices[0].finish_reason == "tool_calls":
-                    for tool_call in assistant_message.tool_calls:
-                        tool_name = tool_call.function.name
-                        tool_args = json.loads(tool_call.function.arguments)
+                    # Execute tool calls concurrently using ThreadPoolExecutor
+                    with ThreadPoolExecutor() as executor:
+                        # Submit all tool calls to the executor
+                        future_to_tool_call = {}
+                        for tool_call in assistant_message.tool_calls:
+                            future = executor.submit(
+                                self._execute_tool_for_subagent,
+                                sub_agent,
+                                tool_call
+                            )
+                            future_to_tool_call[future] = tool_call
                         
-                        try:
-                            # Execute the tool
-                            tool_result = sub_agent.tool_registry.execute_tool(tool_name, **tool_args)
-                            
-                            # Add tool result to messages
-                            sub_agent.messages.append({
-                                "role": "tool",
-                                "tool_call_id": tool_call.id,
-                                "content": tool_result
-                            })
-                            
-                        except Exception as e:
-                            error_msg = f"Error executing {tool_name}: {str(e)}"
-                            sub_agent.messages.append({
-                                "role": "tool",
-                                "tool_call_id": tool_call.id,
-                                "content": error_msg
-                            })
+                        # Process results as they complete
+                        for future in as_completed(future_to_tool_call):
+                            tool_call = future_to_tool_call[future]
+                            try:
+                                tool_call_id, result = future.result()
+                                sub_agent.messages.append({
+                                    "role": "tool",
+                                    "tool_call_id": tool_call_id,
+                                    "content": result
+                                })
+                            except Exception as e:
+                                error_msg = f"Error executing {tool_call.function.name}: {str(e)}"
+                                sub_agent.messages.append({
+                                    "role": "tool",
+                                    "tool_call_id": tool_call.id,
+                                    "content": error_msg
+                                })
                 
                 # Get next completion
                 response = sub_agent._get_completion()
