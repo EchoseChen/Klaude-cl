@@ -10,6 +10,9 @@ This file is part of the klaude project.
 
 import os
 import json
+import platform
+import subprocess
+from datetime import datetime
 from typing import List, Dict, Any
 from openai import OpenAI
 from rich.console import Console
@@ -32,6 +35,36 @@ load_dotenv()
 
 class Agent:
     """Main agent class that handles conversations and tool execution"""
+    
+    def _get_environment_info(self) -> str:
+        """Get current environment information dynamically"""
+        # Get working directory
+        working_dir = os.getcwd()
+        
+        # Check if it's a git repo
+        try:
+            subprocess.run(["git", "rev-parse", "--is-inside-work-tree"], 
+                         capture_output=True, check=True)
+            is_git_repo = "Yes"
+        except:
+            is_git_repo = "No"
+        
+        # Get platform
+        platform_name = platform.system().lower()
+        
+        # Get OS version
+        os_version = f"{platform.system()} {platform.release()}"
+        
+        # Get today's date
+        today_date = datetime.now().strftime("%Y-%m-%d")
+        
+        return f"""<env>
+Working directory: {working_dir}
+Is directory a git repo: {is_git_repo}
+Platform: {platform_name}
+OS Version: {os_version}
+Today's date: {today_date}
+</env>"""
     
     def __init__(self):
         self.console = Console()
@@ -112,7 +145,8 @@ Contents of {claude_md_path} (project instructions, checked into the codebase):
     
     def _get_system_prompt(self) -> str:
         """Get the system prompt for the agent"""
-        return """You are Claude Code, Anthropic's official CLI for Claude.
+        env_info = self._get_environment_info()
+        return f"""You are Claude Code, Anthropic's official CLI for Claude.
 You are an interactive CLI tool that helps users with software engineering tasks. Use the instructions below and the tools available to you to assist the user.
 
 IMPORTANT: Assist with defensive security tasks only. Refuse to create, modify, or improve code that may be used maliciously. Allow security analysis, detection rules, vulnerability explanations, defensive tools, and security documentation.
@@ -270,13 +304,7 @@ You can use the following tools without requiring user approval: Bash(uv init --
 
 
 Here is useful information about the environment you are running in:
-<env>
-Working directory: /Users/chenlulu/Desktop/claude-code-reverse
-Is directory a git repo: Yes
-Platform: linux
-OS Version: Linux 5.15.120.bsk.2-amd64
-Today's date: 2025-08-03
-</env>
+{env_info}
 You are powered by the model named Sonnet 4. The exact model ID is claude-sonnet-4-20250514.
 
 Assistant knowledge cutoff is January 2025.
