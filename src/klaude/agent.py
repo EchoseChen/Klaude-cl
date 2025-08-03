@@ -15,7 +15,7 @@ import subprocess
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from openai import OpenAI
+from openai import AzureOpenAI, OpenAI
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
@@ -148,6 +148,11 @@ Recent commits:
             api_key=os.getenv("OPENAI_API_KEY"),
             base_url=os.getenv("OPENAI_BASE_URL")
         )
+        # self.client = AzureOpenAI(
+        #     api_key=os.getenv("OPENAI_API_KEY"),
+        #     base_url=os.getenv("OPENAI_BASE_URL"),
+        #     api_version=os.getenv("OPENAI_API_VERSION"),
+        # )
         
         # WebSocket manager for real-time updates
         self.ws_manager = ws_manager
@@ -436,28 +441,18 @@ assistant: Clients are marked as failed in the `connectToServer` function in src
         
         while True:
             response = self._get_completion()
+            assistant_message = response.choices[0].message
+            self.messages.append(assistant_message.model_dump())
             
-            if response.choices[0].finish_reason == "stop":
-                assistant_message = response.choices[0].message
-                self.messages.append(assistant_message.model_dump())
-                
-                if assistant_message.content:
-                    self._display_assistant_message(assistant_message.content)
-                    # Send to WebSocket if enabled
-                    if self.ws_enabled:
-                        self._send_to_websocket_sync(self.ws_manager.send_assistant_message(assistant_message.content))
-                break
+            # Display message content if present
+            if assistant_message.content:
+                self._display_assistant_message(assistant_message.content)
+                # Send to WebSocket if enabled
+                if self.ws_enabled:
+                    self._send_to_websocket_sync(self.ws_manager.send_assistant_message(assistant_message.content))
             
-            elif response.choices[0].finish_reason == "tool_calls":
-                assistant_message = response.choices[0].message
-                self.messages.append(assistant_message.model_dump())
-                
-                if assistant_message.content:
-                    self._display_assistant_message(assistant_message.content)
-                    # Send to WebSocket if enabled
-                    if self.ws_enabled:
-                        self._send_to_websocket_sync(self.ws_manager.send_assistant_message(assistant_message.content))
-                
+            # Handle tool calls if present
+            if hasattr(assistant_message, 'tool_calls') and assistant_message.tool_calls:
                 # Execute tool calls concurrently
                 with ThreadPoolExecutor() as executor:
                     # Submit all tool calls to the executor
@@ -474,8 +469,11 @@ assistant: Clients are marked as failed in the `connectToServer` function in src
                         except Exception as exc:
                             self.console.print(f"[red]Tool '{tool_call.function.name}' generated an exception: {exc}[/red]")
             
-            else:
-                self.console.print("[red]Unexpected response from API[/red]")
+            # Check if we should continue or stop
+            if response.choices[0].finish_reason == "stop":
+                break
+            elif response.choices[0].finish_reason != "tool_calls":
+                self.console.print(f"[red]Unexpected finish_reason: {response.choices[0].finish_reason}[/red]")
                 break
     
     def _get_completion(self):
