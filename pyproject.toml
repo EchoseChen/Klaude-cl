@@ -9,10 +9,17 @@ dependencies = [
     "click>=8.0.0",
     "rich>=13.0.0",
     "dotenv>=0.9.9",
+    "requests>=2.32.4",
+    "markdownify>=1.1.0",
 ]
 
 [project.scripts]
 klaude = "klaude.main:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.4.1",
+]
 
 [build-system]
 requires = ["hatchling"]

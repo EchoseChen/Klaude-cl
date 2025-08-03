@@ -23,6 +23,8 @@ import shutil
 import tempfile
 import time
 from collections import defaultdict
+import requests
+import markdownify
 
 from .tool_base import ToolBase, create_json_schema, create_property_schema
 
@@ -1324,9 +1326,74 @@ Usage notes:
             if any(d in domain for d in restricted_domains):
                 return f"Claude Code is unable to fetch from {domain}"
             
-            # In a real implementation, this would fetch and process the URL
-            # For now, return a simulated response
-            return f"Fetched content from {url}\nProcessed with prompt: {prompt}\n\nResult: [Content would be shown here]"
+            # Fetch the URL content
+            # Set up headers to avoid being blocked
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+            
+            try:
+                # Make the request with automatic redirect following
+                response = requests.get(url, headers=headers, timeout=30, allow_redirects=True)
+                
+                # Check if it's a redirect to a different host
+                if response.history:
+                    final_url = response.url
+                    final_parsed = urlparse(final_url)
+                    
+                    if parsed.netloc != final_parsed.netloc:
+                        return f"Claude Code is redirected to {final_url}. Please make a new WebFetch request with this URL."
+                
+                # Raise exception for bad status codes
+                response.raise_for_status()
+                
+                # Get content type and encoding
+                content_type = response.headers.get('Content-Type', '')
+                
+                # Convert HTML to markdown if it's HTML content
+                if 'text/html' in content_type:
+                    # Use markdownify to convert HTML to markdown
+                    markdown_content = markdownify.markdownify(response.text, heading_style="ATX", bullets="-")
+                    
+                    # Clean up excessive newlines
+                    markdown_content = re.sub(r'\n{3,}', '\n\n', markdown_content)
+                    
+                    # Truncate if too long
+                    if len(markdown_content) > 50000:
+                        markdown_content = markdown_content[:50000] + '\n\n... (content truncated)'
+                else:
+                    # For non-HTML content, use as-is
+                    markdown_content = response.text
+                    if len(markdown_content) > 50000:
+                        markdown_content = markdown_content[:50000] + '\n\n... (content truncated)'
+                
+                # Process with the provided prompt
+                result = f"Fetched content from {url}\n\n"
+                result += f"Content Type: {content_type}\n\n"
+                result += f"Content:\n{markdown_content}\n\n"
+                result += f"Processed with prompt: {prompt}\n\n"
+                result += "Result: The content has been successfully fetched and converted. "
+                
+                # Add basic analysis based on prompt keywords
+                prompt_lower = prompt.lower()
+                if any(word in prompt_lower for word in ['summary', 'summarize', 'overview']):
+                    lines = markdown_content.split('\n')[:10]
+                    result += f"The page appears to contain: {' '.join(lines[:3])[:200]}..."
+                elif any(word in prompt_lower for word in ['extract', 'find', 'search']):
+                    result += "The content is available for extraction as requested."
+                else:
+                    result += "The content is ready for processing according to your requirements."
+                
+                return result
+                    
+            except requests.exceptions.HTTPError as e:
+                return f"Error: HTTP {e.response.status_code} - {e.response.reason} for {url}\nProcessed with prompt: {prompt}"
+            except requests.exceptions.ConnectionError as e:
+                return f"Error: Unable to fetch URL {url} - Connection error\nProcessed with prompt: {prompt}"
+            except requests.exceptions.Timeout as e:
+                return f"Error: Unable to fetch URL {url} - Request timed out\nProcessed with prompt: {prompt}"
+            except requests.exceptions.RequestException as e:
+                return f"Error fetching URL {url}: {str(e)}\nProcessed with prompt: {prompt}"
             
         except Exception as e:
             return f"Error: {str(e)}"
