@@ -454,7 +454,11 @@ assistant: Clients are marked as failed in the `connectToServer` function in src
         tool_name = tool_call.function.name
         tool_args = json.loads(tool_call.function.arguments)
         
-        self.console.print(f"\n[bold yellow]Executing {tool_name}:[/bold yellow]")
+        # Special handling for Task tool to show description
+        if tool_name == "Task" and "description" in tool_args:
+            self.console.print(f"\n[bold yellow]Executing {tool_name} ({tool_args['description']}):[/bold yellow]")
+        else:
+            self.console.print(f"\n[bold yellow]Executing {tool_name}:[/bold yellow]")
         
         # Special handling for certain tools
         if tool_name == "Bash":
