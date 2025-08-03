@@ -28,6 +28,19 @@ class TestTaskTool:
         assert tool.name == "Task"
         assert "Launch a new agent" in tool.description
         
+    def test_task_tool_with_custom_agents(self):
+        """Test that custom agents are loaded and included in description"""
+        tool = TaskTool()
+        
+        # Check if any custom agents were loaded from .claude/agents
+        # The code-reviewer agent should be loaded if the test is run from project root
+        if tool.custom_agents:
+            assert "general-purpose" in tool.description
+            # Check that custom agents are in the description
+            for agent_name, agent_config in tool.custom_agents.items():
+                assert agent_name in tool.description
+                assert agent_config.description in tool.description
+        
     def test_task_tool_parameters(self):
         tool = TaskTool()
         schema = tool.get_parameters_schema()
@@ -66,6 +79,22 @@ class TestTaskTool:
         assert parsed["type"] == "text"
         assert "completed" in parsed["text"]
         assert "general-purpose" in parsed["text"]
+    
+    def test_task_tool_with_custom_agent_execution(self):
+        """Test executing a custom agent"""
+        tool = TaskTool()
+        
+        # Only run this test if custom agents are loaded
+        if "code-reviewer" in tool.custom_agents:
+            result = tool.execute(
+                description="Review the code",
+                prompt="Review the following function for best practices:\n\ndef add(a, b):\n    return a + b",
+                subagent_type="code-reviewer"
+            )
+            parsed = json.loads(result)
+            assert parsed["type"] == "text"
+            assert "code-reviewer" in parsed["text"].lower()
+            assert "Review the code" in parsed["text"]
 
 
 if __name__ == "__main__":

@@ -28,6 +28,7 @@ import markdownify
 from dotenv import load_dotenv
 
 from .tool_base import ToolBase, create_json_schema, create_property_schema
+from .agent_config import AgentConfigLoader
 
 # Load environment variables from .env file
 load_dotenv()
@@ -37,14 +38,40 @@ class TaskTool(ToolBase):
     """Launch a new agent to handle complex tasks"""
     
     def __init__(self):
+        # Load custom agent configurations
+        self.agent_config_loader = AgentConfigLoader()
+        self.custom_agents = self.agent_config_loader.get_all_agents()
         super().__init__(
             name="Task",
-            description="""Launch a new agent to handle complex, multi-step tasks autonomously. 
+            description=self._build_description()
+        )
+    
+    def get_parameters_schema(self) -> Dict[str, Any]:
+        return create_json_schema(
+            properties={
+                "description": create_property_schema("string", "A short (3-5 word) description of the task"),
+                "prompt": create_property_schema("string", "The task for the agent to perform"),
+                "subagent_type": create_property_schema("string", "The type of specialized agent to use for this task")
+            },
+            required=["description", "prompt", "subagent_type"]
+        )
+    
+    def _build_description(self) -> str:
+        """Build the tool description including custom agents"""
+        base_desc = """Launch a new agent to handle complex, multi-step tasks autonomously. 
 
 Available agent types and the tools they have access to:
-- general-purpose: General-purpose agent for researching complex questions, searching for code, and executing multi-step tasks. When you are searching for a keyword or file and are not confident that you will find the right match in the first few tries use this agent to perform the search for you. (Tools: *)
-
-When using the Task tool, you must specify a subagent_type parameter to select which agent type to use.
+- general-purpose: General-purpose agent for researching complex questions, searching for code, and executing multi-step tasks. When you are searching for a keyword or file and are not confident that you will find the right match in the first few tries use this agent to perform the search for you. (Tools: *)"""
+        
+        # Add custom agents to description
+        for agent in self.custom_agents.values():
+            tools_str = ', '.join(agent.tools) if agent.tools else 'All tools'
+            base_desc += f"\n- {agent.name}: {agent.description} (Tools: {tools_str})"
+        
+        base_desc += "\n\nWhen using the Task tool, you must specify a subagent_type parameter to select which agent type to use."
+        
+        # Add the rest of the description
+        base_desc += """
 
 
 
@@ -99,17 +126,8 @@ Since the user is greeting, use the greeting-responder agent to respond with a f
 assistant: "I'm going to use the Task tool to launch the with the greeting-responder agent"
 </example>
 """
-        )
-    
-    def get_parameters_schema(self) -> Dict[str, Any]:
-        return create_json_schema(
-            properties={
-                "description": create_property_schema("string", "A short (3-5 word) description of the task"),
-                "prompt": create_property_schema("string", "The task for the agent to perform"),
-                "subagent_type": create_property_schema("string", "The type of specialized agent to use for this task")
-            },
-            required=["description", "prompt", "subagent_type"]
-        )
+        
+        return base_desc
     
     def execute(self, description: str, prompt: str, subagent_type: str) -> str:
         """Launch a sub-agent to handle the task"""
@@ -128,8 +146,28 @@ assistant: "I'm going to use the Task tool to launch the with the greeting-respo
             # Create a new agent instance
             sub_agent = Agent()
             
+            # Check if this is a custom agent
+            custom_agent = self.custom_agents.get(subagent_type)
+            
+            if custom_agent:
+                # Use custom agent's system prompt
+                sub_agent.messages[0] = {
+                    "role": "system",
+                    "content": custom_agent.system_prompt
+                }
+                
+                # Filter tools if specified
+                if custom_agent.tools and custom_agent.tools != ['*']:
+                    # TODO: Implement tool filtering based on custom_agent.tools
+                    # For now, we'll use all tools but add a note in the prompt
+                    tool_note = f"\n\nNote: You are configured to use only these tools: {', '.join(custom_agent.tools)}"
+                else:
+                    tool_note = ""
+            else:
+                tool_note = ""
+            
             # Build a focused prompt for the sub-agent
-            focused_prompt = f"[{subagent_type.upper()} AGENT TASK: {description}]\n\n{prompt}"
+            focused_prompt = f"[{subagent_type.upper()} AGENT TASK: {description}]\n\n{prompt}{tool_note}"
             
             # Clear the messages except system prompt for focused execution
             sub_agent.messages = [sub_agent.messages[0]]  # Keep only system message
