@@ -67,7 +67,7 @@ class Agent:
             WriteTool(),
             NotebookReadTool(),
             NotebookEditTool(),
-            WebFetchTool(),
+            WebFetchTool(llm_client=self.client),  # Pass LLM client to WebFetch
             TodoWriteTool(),
             WebSearchTool()
         ]

@@ -1257,7 +1257,7 @@ class NotebookEditTool(ToolBase):
 class WebFetchTool(ToolBase):
     """Fetches content from a URL"""
     
-    def __init__(self):
+    def __init__(self, llm_client=None):
         super().__init__(
             name="WebFetch",
             description="""
@@ -1279,6 +1279,7 @@ Usage notes:
   - When a URL redirects to a different host, the tool will inform you and provide the redirect URL in a special format. You should then make a new WebFetch request with the redirect URL to fetch the content.
 """
         )
+        self.llm_client = llm_client
     
     def get_parameters_schema(self) -> Dict[str, Any]:
         return create_json_schema(
@@ -1367,24 +1368,64 @@ Usage notes:
                     if len(markdown_content) > 50000:
                         markdown_content = markdown_content[:50000] + '\n\n... (content truncated)'
                 
-                # Process with the provided prompt
-                result = f"Fetched content from {url}\n\n"
-                result += f"Content Type: {content_type}\n\n"
-                result += f"Content:\n{markdown_content}\n\n"
-                result += f"Processed with prompt: {prompt}\n\n"
-                result += "Result: The content has been successfully fetched and converted. "
-                
-                # Add basic analysis based on prompt keywords
-                prompt_lower = prompt.lower()
-                if any(word in prompt_lower for word in ['summary', 'summarize', 'overview']):
-                    lines = markdown_content.split('\n')[:10]
-                    result += f"The page appears to contain: {' '.join(lines[:3])[:200]}..."
-                elif any(word in prompt_lower for word in ['extract', 'find', 'search']):
-                    result += "The content is available for extraction as requested."
+                # Process content with LLM if available
+                if self.llm_client:
+                    try:
+                        # Create a focused prompt for the LLM
+                        system_prompt = "You are a helpful assistant that analyzes web content. Be concise and direct in your response."
+                        
+                        # Truncate content if too long for LLM context
+                        max_content_length = 30000  # Leave room for prompts
+                        truncated_content = markdown_content
+                        if len(markdown_content) > max_content_length:
+                            truncated_content = markdown_content[:max_content_length] + "\n\n... (content truncated for analysis)"
+                        
+                        user_message = f"Analyze the following content from {url} based on this request: {prompt}\n\nContent:\n{truncated_content}"
+                        
+                        # Call LLM
+                        import os
+                        llm_response = self.llm_client.chat.completions.create(
+                            model=os.getenv("OPENAI_MODEL_NAME", "gpt-4o-mini"),
+                            messages=[
+                                {"role": "system", "content": system_prompt},
+                                {"role": "user", "content": user_message}
+                            ],
+                            temperature=0,
+                            max_tokens=2000
+                        )
+                        
+                        result = f"Fetched content from {url}\n\n"
+                        result += f"Analysis based on prompt: '{prompt}'\n\n"
+                        result += llm_response.choices[0].message.content
+                        
+                        return result
+                        
+                    except Exception as llm_error:
+                        # Fallback to basic analysis if LLM fails
+                        result = f"Fetched content from {url}\n\n"
+                        result += f"Content Type: {content_type}\n\n"
+                        result += f"(LLM analysis failed: {str(llm_error)})\n\n"
+                        result += f"Raw content:\n{markdown_content}"
+                        return result
                 else:
-                    result += "The content is ready for processing according to your requirements."
-                
-                return result
+                    # No LLM available, return content with basic analysis
+                    result = f"Fetched content from {url}\n\n"
+                    result += f"Content Type: {content_type}\n\n"
+                    result += f"Content:\n{markdown_content}\n\n"
+                    result += f"Processed with prompt: {prompt}\n\n"
+                    result += "Result: The content has been successfully fetched and converted. "
+                    
+                    # Add basic analysis based on prompt keywords
+                    prompt_lower = prompt.lower()
+                    if any(word in prompt_lower for word in ['summary', 'summarize', 'overview']):
+                        lines = markdown_content.split('\n')[:10]
+                        result += f"The page appears to contain: {' '.join(lines[:3])[:200]}..."
+                    elif any(word in prompt_lower for word in ['extract', 'find', 'search']):
+                        result += "The content is available for extraction as requested."
+                    else:
+                        result += "The content is ready for processing according to your requirements."
+                    
+                    return result
                     
             except requests.exceptions.HTTPError as e:
                 return f"Error: HTTP {e.response.status_code} - {e.response.reason} for {url}\nProcessed with prompt: {prompt}"
