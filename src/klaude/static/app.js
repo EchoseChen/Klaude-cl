@@ -5,6 +5,9 @@ class KlaudeWebClient {
         this.sessionId = null;
         this.toolCalls = new Map();
         this.nestedTasks = new Map();
+        this.currentToolGroup = null;
+        this.toolGroupTimestamp = null;
+        this.groupThreshold = 1000; // Group tools within 1 second
         
         this.elements = {
             conversation: document.getElementById('conversation'),
@@ -90,6 +93,12 @@ class KlaudeWebClient {
         // Clear conversation
         this.elements.conversation.innerHTML = '';
         
+        // Reset state
+        this.toolCalls.clear();
+        this.nestedTasks.clear();
+        this.currentToolGroup = null;
+        this.toolGroupTimestamp = null;
+        
         // Replay history
         if (data.history && data.history.length > 0) {
             data.history.forEach(msg => this.handleMessage(msg));
@@ -108,6 +117,9 @@ class KlaudeWebClient {
     }
     
     addUserMessage(data) {
+        // Close any existing tool group
+        this.closeCurrentToolGroup();
+        
         const messageDiv = document.createElement('div');
         messageDiv.className = 'message user-message';
         messageDiv.innerHTML = `
@@ -123,6 +135,9 @@ class KlaudeWebClient {
     }
     
     addAssistantMessage(data) {
+        // Close any existing tool group
+        this.closeCurrentToolGroup();
+        
         const messageDiv = document.createElement('div');
         messageDiv.className = 'message assistant-message';
         
@@ -147,6 +162,35 @@ class KlaudeWebClient {
     }
     
     addToolCall(data) {
+        const now = Date.now();
+        
+        // Check if we should create a new tool group or add to existing
+        if (!this.currentToolGroup || 
+            (this.toolGroupTimestamp && now - this.toolGroupTimestamp > this.groupThreshold)) {
+            // Create new tool group
+            this.closeCurrentToolGroup();
+            
+            const toolGroup = document.createElement('div');
+            toolGroup.className = 'tool-group';
+            toolGroup.id = `tool-group-${now}`;
+            
+            const toolContainer = document.createElement('div');
+            toolContainer.className = 'tool-calls-container';
+            toolGroup.appendChild(toolContainer);
+            
+            this.currentToolGroup = toolGroup;
+            this.toolGroupTimestamp = now;
+            
+            // Append to appropriate parent
+            if (data.parent_task_id && this.nestedTasks.has(data.parent_task_id)) {
+                const parentTask = this.nestedTasks.get(data.parent_task_id);
+                parentTask.appendChild(toolGroup);
+            } else {
+                this.appendToConversation(toolGroup);
+            }
+        }
+        
+        // Create tool call element
         const toolDiv = document.createElement('div');
         toolDiv.className = 'tool-call';
         toolDiv.id = `tool-${data.id}`;
@@ -186,13 +230,9 @@ class KlaudeWebClient {
         // Store reference
         this.toolCalls.set(data.id, toolDiv);
         
-        // Append to appropriate parent
-        if (data.parent_task_id && this.nestedTasks.has(data.parent_task_id)) {
-            const parentTask = this.nestedTasks.get(data.parent_task_id);
-            parentTask.appendChild(toolDiv);
-        } else {
-            this.appendToConversation(toolDiv);
-        }
+        // Add to current tool group container
+        const container = this.currentToolGroup.querySelector('.tool-calls-container');
+        container.appendChild(toolDiv);
         
         // Highlight code
         toolBody.querySelectorAll('pre code').forEach((block) => {
@@ -240,7 +280,25 @@ class KlaudeWebClient {
         toolBody.appendChild(resultSection);
     }
     
+    closeCurrentToolGroup() {
+        if (this.currentToolGroup) {
+            // Add merge indicator if there are multiple tools
+            const container = this.currentToolGroup.querySelector('.tool-calls-container');
+            if (container.children.length > 1) {
+                const mergeDiv = document.createElement('div');
+                mergeDiv.className = 'merge-indicator';
+                this.currentToolGroup.appendChild(mergeDiv);
+            }
+            
+            this.currentToolGroup = null;
+            this.toolGroupTimestamp = null;
+        }
+    }
+    
     handleTaskStart(data) {
+        // Close any existing tool group
+        this.closeCurrentToolGroup();
+        
         const taskDiv = document.createElement('div');
         taskDiv.className = 'nested-task';
         taskDiv.id = `task-${data.id}`;
@@ -264,7 +322,8 @@ class KlaudeWebClient {
     }
     
     handleTaskEnd(data) {
-        // Task ended, no specific action needed
+        // Close any tool group within this task
+        this.closeCurrentToolGroup();
     }
     
     toggleToolBody(toolId) {
