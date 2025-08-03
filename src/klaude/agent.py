@@ -66,6 +66,70 @@ OS Version: {os_version}
 Today's date: {today_date}
 </env>"""
     
+    def _get_git_status(self) -> str:
+        """Get git status information"""
+        
+        # Try to get current branch
+        try:
+            result = subprocess.run(["git", "rev-parse", "--abbrev-ref", "HEAD"], 
+                                  capture_output=True, text=True, check=True)
+            current_branch = result.stdout.strip()
+        except:
+            current_branch = ""
+        
+        # Try to get main/master branch
+        main_branch = ""
+        try:
+            # Check for main branch
+            subprocess.run(["git", "rev-parse", "--verify", "main"], 
+                         capture_output=True, check=True)
+            main_branch = "main"
+        except:
+            try:
+                # Check for master branch
+                subprocess.run(["git", "rev-parse", "--verify", "master"], 
+                             capture_output=True, check=True)
+                main_branch = "master"
+            except:
+                main_branch = ""
+        
+        # Get git status
+        status_lines = []
+        try:
+            result = subprocess.run(["git", "status", "--porcelain"], 
+                                  capture_output=True, text=True, check=True)
+            if result.stdout.strip():
+                status_lines = result.stdout.strip().split('\n')
+            else:
+                status_lines = ["(clean)"]
+        except:
+            status_lines = []
+        
+        # Get recent commits
+        recent_commits = []
+        try:
+            result = subprocess.run(["git", "log", "--oneline", "-5"], 
+                                  capture_output=True, text=True, check=True)
+            if result.stdout.strip():
+                recent_commits = result.stdout.strip().split('\n')
+        except:
+            pass
+        
+        # Build git status string
+        git_status = f"""
+gitStatus: This is the git status at the start of the conversation. Note that this status is a snapshot in time, and will not update during the conversation.
+Current branch: {current_branch}
+
+Main branch (you will usually use this for PRs): {main_branch}
+
+Status:
+{chr(10).join(status_lines) if status_lines else '(no git repository)'}
+
+Recent commits:
+{chr(10).join(recent_commits) if recent_commits else '(no commits)'}"""
+        
+        return git_status
+    
     def __init__(self):
         self.console = Console()
         self.client = OpenAI(
@@ -322,7 +386,9 @@ When referencing specific functions or pieces of code include the pattern `file_
 <example>
 user: Where are errors from the client handled?
 assistant: Clients are marked as failed in the `connectToServer` function in src/services/process.ts:712.
-</example>"""
+</example>
+
+{self._get_git_status()}"""
     
     def run(self, prompt: str):
         """Run the agent with a user prompt"""
