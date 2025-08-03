@@ -11,6 +11,7 @@ dependencies = [
     "dotenv>=0.9.9",
     "requests>=2.32.4",
     "markdownify>=1.1.0",
+    "aiohttp",
 ]
 
 [project.scripts]

@@ -27,6 +27,7 @@ from collections import defaultdict
 import requests
 import markdownify
 from dotenv import load_dotenv
+import uuid
 
 from .tool_base import ToolBase, create_json_schema, create_property_schema
 from .agent_config import AgentConfigLoader
@@ -38,7 +39,9 @@ load_dotenv()
 class TaskTool(ToolBase):
     """Launch a new agent to handle complex tasks"""
     
-    def __init__(self):
+    def __init__(self, ws_manager=None):
+        # Store WebSocket manager for sub-agents
+        self.ws_manager = ws_manager
         # Load custom agent configurations
         self.agent_config_loader = AgentConfigLoader()
         self.custom_agents = self.agent_config_loader.get_all_agents()
@@ -155,8 +158,33 @@ assistant: "I'm going to use the Task tool to launch the with the greeting-respo
             # Import here to avoid circular imports
             from .agent import Agent
             
-            # Create a new agent instance
-            sub_agent = Agent()
+            # Generate task ID for tracking
+            task_id = str(uuid.uuid4())
+            
+            # Send task start event if WebSocket is enabled
+            if self.ws_manager:
+                import asyncio
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        asyncio.create_task(
+                            self.ws_manager.send_task_start(task_id, description)
+                        )
+                    else:
+                        loop.run_until_complete(
+                            self.ws_manager.send_task_start(task_id, description)
+                        )
+                except RuntimeError:
+                    # No event loop, create one
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    loop.run_until_complete(
+                        self.ws_manager.send_task_start(task_id, description)
+                    )
+                    loop.close()
+            
+            # Create a new agent instance with WebSocket manager
+            sub_agent = Agent(ws_manager=self.ws_manager)
             
             # Check if this is a custom agent
             custom_agent = self.custom_agents.get(subagent_type)
@@ -237,6 +265,28 @@ assistant: "I'm going to use the Task tool to launch the with the greeting-respo
             final_message = response.choices[0].message
             if final_message.content:
                 result_messages.append(final_message.content)
+            
+            # Send task end event if WebSocket is enabled
+            if self.ws_manager:
+                import asyncio
+                try:
+                    loop = asyncio.get_event_loop()
+                    if loop.is_running():
+                        asyncio.create_task(
+                            self.ws_manager.send_task_end(task_id)
+                        )
+                    else:
+                        loop.run_until_complete(
+                            self.ws_manager.send_task_end(task_id)
+                        )
+                except RuntimeError:
+                    # No event loop, create one
+                    loop = asyncio.new_event_loop()
+                    asyncio.set_event_loop(loop)
+                    loop.run_until_complete(
+                        self.ws_manager.send_task_end(task_id)
+                    )
+                    loop.close()
             
             # Compile the result
             result_text = "\n\n".join(result_messages) if result_messages else "Task completed without output."
