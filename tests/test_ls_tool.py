@@ -17,6 +17,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.klaude.tools_impl import LSTool
+from test_helpers import assert_schema_matches_expected
 
 
 class TestLSTool:
@@ -41,24 +42,7 @@ class TestLSTool:
         """Test that to_function_schema produces correct format"""
         tool = LSTool()
         schema = tool.to_function_schema()
-        
-        assert schema["type"] == "function"
-        assert schema["function"]["name"] == "LS"
-        assert "Lists files and directories" in schema["function"]["description"]
-        
-        params = schema["function"]["parameters"]
-        assert params["type"] == "object"
-        assert params["required"] == ["path"]
-        assert params["additionalProperties"] == False
-        assert params["$schema"] == "http://json-schema.org/draft-07/schema#"
-        
-        props = params["properties"]
-        assert props["path"]["type"] == "string"
-        assert props["path"]["description"] == "The absolute path to the directory to list (must be absolute, not relative)"
-        
-        assert props["ignore"]["type"] == "array"
-        assert props["ignore"]["items"]["type"] == "string"
-        assert props["ignore"]["description"] == "List of glob patterns to ignore"
+        assert_schema_matches_expected(schema, "LS")
     
     def test_ls_tool_execution(self):
         tool = LSTool()

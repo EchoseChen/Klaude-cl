@@ -16,6 +16,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.klaude.tools_impl import TodoWriteTool
+from test_helpers import assert_schema_matches_expected
 
 
 class TestTodoWriteTool:
@@ -41,37 +42,7 @@ class TestTodoWriteTool:
         """Test that to_function_schema produces correct format"""
         tool = TodoWriteTool()
         schema = tool.to_function_schema()
-        
-        assert schema["type"] == "function"
-        assert schema["function"]["name"] == "TodoWrite"
-        assert "structured task list" in schema["function"]["description"]
-        
-        params = schema["function"]["parameters"]
-        assert params["type"] == "object"
-        assert params["required"] == ["todos"]
-        assert params["additionalProperties"] == False
-        assert params["$schema"] == "http://json-schema.org/draft-07/schema#"
-        
-        todos_prop = params["properties"]["todos"]
-        assert todos_prop["type"] == "array"
-        assert todos_prop["description"] == "The updated todo list"
-        
-        item_schema = todos_prop["items"]
-        assert item_schema["type"] == "object"
-        assert item_schema["required"] == ["content", "status", "priority", "id"]
-        assert item_schema["additionalProperties"] == False
-        
-        item_props = item_schema["properties"]
-        assert item_props["content"]["type"] == "string"
-        assert item_props["content"]["minLength"] == 1
-        
-        assert item_props["status"]["type"] == "string"
-        assert item_props["status"]["enum"] == ["pending", "in_progress", "completed"]
-        
-        assert item_props["priority"]["type"] == "string"
-        assert item_props["priority"]["enum"] == ["high", "medium", "low"]
-        
-        assert item_props["id"]["type"] == "string"
+        assert_schema_matches_expected(schema, "TodoWrite")
         
     def test_todowrite_tool_execution(self):
         tool = TodoWriteTool()

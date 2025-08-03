@@ -16,6 +16,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.klaude.tools_impl import WebSearchTool
+from test_helpers import assert_schema_matches_expected
 
 
 class TestWebSearchTool:
@@ -38,29 +39,7 @@ class TestWebSearchTool:
         """Test that to_function_schema produces correct format"""
         tool = WebSearchTool()
         schema = tool.to_function_schema()
-        
-        assert schema["type"] == "function"
-        assert schema["function"]["name"] == "WebSearch"
-        assert "search the web" in schema["function"]["description"]
-        
-        params = schema["function"]["parameters"]
-        assert params["type"] == "object"
-        assert params["required"] == ["query"]
-        assert params["additionalProperties"] == False
-        assert params["$schema"] == "http://json-schema.org/draft-07/schema#"
-        
-        props = params["properties"]
-        assert props["query"]["type"] == "string"
-        assert props["query"]["minLength"] == 2
-        assert props["query"]["description"] == "The search query to use"
-        
-        assert props["allowed_domains"]["type"] == "array"
-        assert props["allowed_domains"]["items"]["type"] == "string"
-        assert props["allowed_domains"]["description"] == "Only include search results from these domains"
-        
-        assert props["blocked_domains"]["type"] == "array"
-        assert props["blocked_domains"]["items"]["type"] == "string"
-        assert props["blocked_domains"]["description"] == "Never include search results from these domains"
+        assert_schema_matches_expected(schema, "WebSearch")
         
     def test_websearch_tool_execution(self):
         tool = WebSearchTool()

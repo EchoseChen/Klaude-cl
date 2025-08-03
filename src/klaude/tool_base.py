@@ -72,9 +72,7 @@ def create_json_schema(schema_type: str = "object", properties: Dict[str, Any] =
                       required: List[str] = None, additional_properties: bool = False) -> Dict[str, Any]:
     """Helper function to create JSON schema"""
     schema = {
-        "type": schema_type,
-        "additionalProperties": additional_properties,
-        "$schema": "http://json-schema.org/draft-07/schema#"
+        "type": schema_type
     }
     
     if properties:
@@ -82,6 +80,9 @@ def create_json_schema(schema_type: str = "object", properties: Dict[str, Any] =
     
     if required:
         schema["required"] = required
+    
+    schema["additionalProperties"] = additional_properties
+    schema["$schema"] = "http://json-schema.org/draft-07/schema#"
     
     return schema
 

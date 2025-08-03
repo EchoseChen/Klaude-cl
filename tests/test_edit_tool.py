@@ -17,6 +17,7 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.klaude.tools_impl import EditTool
+from test_helpers import assert_schema_matches_expected
 
 
 class TestEditTool:
@@ -51,30 +52,7 @@ class TestEditTool:
         """Test that to_function_schema produces correct format"""
         tool = EditTool()
         schema = tool.to_function_schema()
-        
-        assert schema["type"] == "function"
-        assert schema["function"]["name"] == "Edit"
-        assert "string replacements" in schema["function"]["description"]
-        
-        params = schema["function"]["parameters"]
-        assert params["type"] == "object"
-        assert params["required"] == ["file_path", "old_string", "new_string"]
-        assert params["additionalProperties"] == False
-        assert params["$schema"] == "http://json-schema.org/draft-07/schema#"
-        
-        props = params["properties"]
-        assert props["file_path"]["type"] == "string"
-        assert props["file_path"]["description"] == "The absolute path to the file to modify"
-        
-        assert props["old_string"]["type"] == "string"
-        assert props["old_string"]["description"] == "The text to replace"
-        
-        assert props["new_string"]["type"] == "string"
-        assert props["new_string"]["description"] == "The text to replace it with (must be different from old_string)"
-        
-        assert props["replace_all"]["type"] == "boolean"
-        assert props["replace_all"]["default"] == False
-        assert props["replace_all"]["description"] == "Replace all occurences of old_string (default false)"
+        assert_schema_matches_expected(schema, "Edit")
     
     def test_edit_tool_execution(self):
         tool = EditTool()

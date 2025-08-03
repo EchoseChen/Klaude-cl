@@ -16,6 +16,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.klaude.tools_impl import BashTool
+from test_helpers import assert_schema_matches_expected
 
 
 class TestBashTool:
@@ -38,26 +39,7 @@ class TestBashTool:
         """Test that to_function_schema produces correct format"""
         tool = BashTool()
         schema = tool.to_function_schema()
-        
-        assert schema["type"] == "function"
-        assert schema["function"]["name"] == "Bash"
-        assert "bash command" in schema["function"]["description"]
-        
-        params = schema["function"]["parameters"]
-        assert params["type"] == "object"
-        assert params["required"] == ["command"]
-        assert params["additionalProperties"] == False
-        assert params["$schema"] == "http://json-schema.org/draft-07/schema#"
-        
-        props = params["properties"]
-        assert props["command"]["type"] == "string"
-        assert props["command"]["description"] == "The command to execute"
-        
-        assert props["timeout"]["type"] == "number"
-        assert props["timeout"]["description"] == "Optional timeout in milliseconds (max 600000)"
-        
-        assert props["description"]["type"] == "string"
-        assert "Clear, concise description" in props["description"]["description"]
+        assert_schema_matches_expected(schema, "Bash")
     
     def test_bash_tool_execution_success(self):
         tool = BashTool()

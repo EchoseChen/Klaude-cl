@@ -17,6 +17,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.klaude.tools_impl import ReadTool
+from test_helpers import assert_schema_matches_expected
 
 
 class TestReadTool:
@@ -42,26 +43,7 @@ class TestReadTool:
         """Test that to_function_schema produces correct format"""
         tool = ReadTool()
         schema = tool.to_function_schema()
-        
-        assert schema["type"] == "function"
-        assert schema["function"]["name"] == "Read"
-        assert "Reads a file" in schema["function"]["description"]
-        
-        params = schema["function"]["parameters"]
-        assert params["type"] == "object"
-        assert params["required"] == ["file_path"]
-        assert params["additionalProperties"] == False
-        assert params["$schema"] == "http://json-schema.org/draft-07/schema#"
-        
-        props = params["properties"]
-        assert props["file_path"]["type"] == "string"
-        assert props["file_path"]["description"] == "The absolute path to the file to read"
-        
-        assert props["offset"]["type"] == "number"
-        assert "line number to start reading from" in props["offset"]["description"]
-        
-        assert props["limit"]["type"] == "number"
-        assert "number of lines to read" in props["limit"]["description"]
+        assert_schema_matches_expected(schema, "Read")
     
     def test_read_tool_execution(self):
         tool = ReadTool()

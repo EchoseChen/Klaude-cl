@@ -18,6 +18,7 @@ from unittest.mock import patch, MagicMock
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.klaude.tools_impl import GrepTool
+from test_helpers import assert_schema_matches_expected
 
 
 class TestGrepTool:
@@ -43,35 +44,7 @@ class TestGrepTool:
         """Test that to_function_schema produces correct format"""
         tool = GrepTool()
         schema = tool.to_function_schema()
-        
-        assert schema["type"] == "function"
-        assert schema["function"]["name"] == "Grep"
-        assert "search tool" in schema["function"]["description"]
-        
-        params = schema["function"]["parameters"]
-        assert params["type"] == "object"
-        assert params["required"] == ["pattern"]
-        assert params["additionalProperties"] == False
-        assert params["$schema"] == "http://json-schema.org/draft-07/schema#"
-        
-        props = params["properties"]
-        assert props["pattern"]["type"] == "string"
-        assert props["pattern"]["description"] == "The regular expression pattern to search for in file contents"
-        
-        assert props["output_mode"]["type"] == "string"
-        assert props["output_mode"]["enum"] == ["content", "files_with_matches", "count"]
-        
-        # Check ripgrep-specific parameters
-        assert props["-B"]["type"] == "number"
-        assert props["-A"]["type"] == "number"
-        assert props["-C"]["type"] == "number"
-        assert props["-n"]["type"] == "boolean"
-        assert props["-i"]["type"] == "boolean"
-        
-        assert props["glob"]["type"] == "string"
-        assert props["type"]["type"] == "string"
-        assert props["head_limit"]["type"] == "number"
-        assert props["multiline"]["type"] == "boolean"
+        assert_schema_matches_expected(schema, "Grep")
     
     @patch('subprocess.run')
     def test_grep_tool_execution_files_mode(self, mock_run):

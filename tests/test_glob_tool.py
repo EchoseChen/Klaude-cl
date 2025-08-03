@@ -17,6 +17,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.klaude.tools_impl import GlobTool
+from test_helpers import assert_schema_matches_expected
 
 
 class TestGlobTool:
@@ -42,24 +43,7 @@ class TestGlobTool:
         """Test that to_function_schema produces correct format"""
         tool = GlobTool()
         schema = tool.to_function_schema()
-        
-        assert schema["type"] == "function"
-        assert schema["function"]["name"] == "Glob"
-        assert "file pattern matching" in schema["function"]["description"]
-        
-        params = schema["function"]["parameters"]
-        assert params["type"] == "object"
-        assert params["required"] == ["pattern"]
-        assert params["additionalProperties"] == False
-        assert params["$schema"] == "http://json-schema.org/draft-07/schema#"
-        
-        props = params["properties"]
-        assert props["pattern"]["type"] == "string"
-        assert props["pattern"]["description"] == "The glob pattern to match files against"
-        
-        assert props["path"]["type"] == "string"
-        assert "directory to search in" in props["path"]["description"]
-        assert "IMPORTANT: Omit this field" in props["path"]["description"]
+        assert_schema_matches_expected(schema, "Glob")
     
     def test_glob_tool_execution(self):
         tool = GlobTool()

@@ -17,6 +17,7 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.klaude.tools_impl import MultiEditTool
+from test_helpers import assert_schema_matches_expected
 
 
 class TestMultiEditTool:
@@ -47,36 +48,7 @@ class TestMultiEditTool:
         """Test that to_function_schema produces correct format"""
         tool = MultiEditTool()
         schema = tool.to_function_schema()
-        
-        assert schema["type"] == "function"
-        assert schema["function"]["name"] == "MultiEdit"
-        assert "multiple edits" in schema["function"]["description"]
-        
-        params = schema["function"]["parameters"]
-        assert params["type"] == "object"
-        assert params["required"] == ["file_path", "edits"]
-        assert params["additionalProperties"] == False
-        assert params["$schema"] == "http://json-schema.org/draft-07/schema#"
-        
-        props = params["properties"]
-        assert props["file_path"]["type"] == "string"
-        assert props["file_path"]["description"] == "The absolute path to the file to modify"
-        
-        edits_prop = props["edits"]
-        assert edits_prop["type"] == "array"
-        assert edits_prop["minItems"] == 1
-        assert edits_prop["description"] == "Array of edit operations to perform sequentially on the file"
-        
-        item_schema = edits_prop["items"]
-        assert item_schema["type"] == "object"
-        assert item_schema["required"] == ["old_string", "new_string"]
-        assert item_schema["additionalProperties"] == False
-        
-        item_props = item_schema["properties"]
-        assert item_props["old_string"]["type"] == "string"
-        assert item_props["new_string"]["type"] == "string"
-        assert item_props["replace_all"]["type"] == "boolean"
-        assert item_props["replace_all"]["default"] == False
+        assert_schema_matches_expected(schema, "MultiEdit")
         
     def test_multiedit_tool_execution(self):
         tool = MultiEditTool()

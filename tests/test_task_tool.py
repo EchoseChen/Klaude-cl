@@ -17,6 +17,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.klaude.tools_impl import TaskTool
+from test_helpers import assert_schema_matches_expected
 
 
 class TestTaskTool:
@@ -39,35 +40,7 @@ class TestTaskTool:
         """Test that to_function_schema produces correct format"""
         tool = TaskTool()
         schema = tool.to_function_schema()
-        
-        # Check structure
-        assert schema["type"] == "function"
-        assert "function" in schema
-        assert schema["function"]["name"] == "Task"
-        assert "Launch a new agent" in schema["function"]["description"]
-        
-        # Check parameters
-        params = schema["function"]["parameters"]
-        assert params["type"] == "object"
-        assert params["additionalProperties"] == False
-        assert params["$schema"] == "http://json-schema.org/draft-07/schema#"
-        
-        # Check properties
-        props = params["properties"]
-        assert "description" in props
-        assert props["description"]["type"] == "string"
-        assert props["description"]["description"] == "A short (3-5 word) description of the task"
-        
-        assert "prompt" in props
-        assert props["prompt"]["type"] == "string"
-        assert props["prompt"]["description"] == "The task for the agent to perform"
-        
-        assert "subagent_type" in props
-        assert props["subagent_type"]["type"] == "string"
-        assert props["subagent_type"]["description"] == "The type of specialized agent to use for this task"
-        
-        # Check required fields
-        assert params["required"] == ["description", "prompt", "subagent_type"]
+        assert_schema_matches_expected(schema, "Task")
     
     def test_task_tool_execution(self):
         tool = TaskTool()

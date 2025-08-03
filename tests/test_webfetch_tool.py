@@ -16,6 +16,7 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.klaude.tools_impl import WebFetchTool
+from test_helpers import assert_schema_matches_expected
 
 
 class TestWebFetchTool:
@@ -37,24 +38,7 @@ class TestWebFetchTool:
         """Test that to_function_schema produces correct format"""
         tool = WebFetchTool()
         schema = tool.to_function_schema()
-        
-        assert schema["type"] == "function"
-        assert schema["function"]["name"] == "WebFetch"
-        assert "Fetches content from" in schema["function"]["description"]
-        
-        params = schema["function"]["parameters"]
-        assert params["type"] == "object"
-        assert params["required"] == ["url", "prompt"]
-        assert params["additionalProperties"] == False
-        assert params["$schema"] == "http://json-schema.org/draft-07/schema#"
-        
-        props = params["properties"]
-        assert props["url"]["type"] == "string"
-        assert props["url"]["format"] == "uri"
-        assert props["url"]["description"] == "The URL to fetch content from"
-        
-        assert props["prompt"]["type"] == "string"
-        assert props["prompt"]["description"] == "The prompt to run on the fetched content"
+        assert_schema_matches_expected(schema, "WebFetch")
         
     def test_webfetch_tool_execution(self):
         tool = WebFetchTool()

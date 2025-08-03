@@ -18,6 +18,7 @@ import shutil
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.klaude.tools_impl import WriteTool
+from test_helpers import assert_schema_matches_expected
 
 
 class TestWriteTool:
@@ -45,23 +46,7 @@ class TestWriteTool:
         """Test that to_function_schema produces correct format"""
         tool = WriteTool()
         schema = tool.to_function_schema()
-        
-        assert schema["type"] == "function"
-        assert schema["function"]["name"] == "Write"
-        assert "Writes a file" in schema["function"]["description"]
-        
-        params = schema["function"]["parameters"]
-        assert params["type"] == "object"
-        assert params["required"] == ["file_path", "content"]
-        assert params["additionalProperties"] == False
-        assert params["$schema"] == "http://json-schema.org/draft-07/schema#"
-        
-        props = params["properties"]
-        assert props["file_path"]["type"] == "string"
-        assert props["file_path"]["description"] == "The absolute path to the file to write (must be absolute, not relative)"
-        
-        assert props["content"]["type"] == "string"
-        assert props["content"]["description"] == "The content to write to the file"
+        assert_schema_matches_expected(schema, "Write")
         
     def test_write_tool_execution(self):
         tool = WriteTool()
