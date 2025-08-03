@@ -2,3 +2,4 @@
 .venv
 .claude
 *.pyc
+debug/
