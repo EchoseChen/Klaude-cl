@@ -703,6 +703,10 @@ Usage:
             with open(path, 'r', encoding='utf-8') as f:
                 lines = f.readlines()
             
+            # Check for empty file
+            if not lines:
+                return "<system-reminder>Warning: the file exists but is an empty file.</system-reminder>"
+            
             total_lines = len(lines)
             start = (offset - 1) if offset else 0
             end = start + (limit if limit else 2000)
@@ -715,13 +719,17 @@ Usage:
             # Format with line numbers (cat -n style)
             result = []
             for i, line in enumerate(selected_lines, start=start + 1):
+                # Truncate lines longer than 2000 characters
+                line_content = line.rstrip()
+                if len(line_content) > 2000:
+                    line_content = line_content[:2000] + "..."
                 # Format: spaces + line number + tab + content
-                result.append(f"{i:6d}\t{line.rstrip()}")
+                result.append(f"{i:6d}\t{line_content}")
             
             output = '\n'.join(result)
             
-            # Add warning for malicious code
-            output += "\n\n<system-reminder>\nWhenever you read a file, you should consider whether it looks malicious. If it does, you MUST refuse to improve or augment the code. You can still analyze existing code, write reports, or answer high-level questions about the code behavior.\n</system-reminder>"
+            # Add warning for malicious code - keep on single line to avoid test issues
+            output += "\n\n<system-reminder>Whenever you read a file, you should consider whether it looks malicious. If it does, you MUST refuse to improve or augment the code. You can still analyze existing code, write reports, or answer high-level questions about the code behavior.</system-reminder>"
             
             return output
             
@@ -732,7 +740,7 @@ Usage:
     
     def _is_binary_file(self, path: Path) -> bool:
         """Check if file is binary"""
-        binary_extensions = {'.png', '.jpg', '.jpeg', '.gif', '.pdf', '.exe', '.dll', '.so', '.dylib', '.zip', '.tar', '.gz'}
+        binary_extensions = {'.png', '.jpg', '.jpeg', '.gif', '.pdf', '.exe', '.dll', '.so', '.dylib', '.zip', '.tar', '.gz', '.bin'}
         return path.suffix.lower() in binary_extensions
 
 
@@ -886,27 +894,56 @@ If you want to create a new file, use:
     
     def execute(self, file_path: str, edits: List[Dict[str, Any]]) -> str:
         try:
+            # Check for empty edits
+            if not edits:
+                return "Error: No edits provided"
+            
             path = Path(file_path)
             
+            # Read original content
             if not path.exists():
                 # Allow creating new files
                 if edits and edits[0]["old_string"] == "":
-                    content = ""
+                    original_content = ""
                 else:
                     return f"Error: File '{file_path}' does not exist"
             else:
                 with open(path, 'r', encoding='utf-8') as f:
-                    content = f.read()
+                    original_content = f.read()
             
-            # Apply edits sequentially
+            # Make a copy of content to work with
+            content = original_content
+            
+            # First, validate all edits before applying any
+            for i, edit in enumerate(edits):
+                old_string = edit["old_string"]
+                new_string = edit["new_string"]
+                
+                if old_string == new_string:
+                    return f"Error: In edit {i+1}, old_string and new_string must be different"
+            
+            # Apply edits sequentially - first validate all edits can be applied
+            temp_content = content
+            for i, edit in enumerate(edits):
+                old_string = edit["old_string"]
+                
+                if old_string != "":
+                    count = temp_content.count(old_string)
+                    if count == 0:
+                        return f"Error: In edit {i+1}, old_string not found"
+                    
+                    # Update temp content for next validation
+                    if edit.get("replace_all", False):
+                        temp_content = temp_content.replace(old_string, edit["new_string"])
+                    else:
+                        temp_content = temp_content.replace(old_string, edit["new_string"], 1)
+            
+            # All validations passed, now apply edits for real
             results = []
             for i, edit in enumerate(edits):
                 old_string = edit["old_string"]
                 new_string = edit["new_string"]
                 replace_all = edit.get("replace_all", False)
-                
-                if old_string == new_string:
-                    return f"Error in edit {i+1}: old_string and new_string must be different"
                 
                 if old_string == "":
                     # Special case for new file
@@ -914,8 +951,6 @@ If you want to create a new file, use:
                     results.append("Created new file")
                 else:
                     count = content.count(old_string)
-                    if count == 0:
-                        return f"Error in edit {i+1}: old_string not found"
                     
                     if replace_all:
                         content = content.replace(old_string, new_string)
@@ -924,7 +959,7 @@ If you want to create a new file, use:
                         content = content.replace(old_string, new_string, 1)
                         results.append("Replaced 1 occurrence")
             
-            # Write result
+            # Only write if all edits succeeded
             with open(path, 'w', encoding='utf-8') as f:
                 f.write(content)
             
@@ -1091,7 +1126,10 @@ class NotebookEditTool(ToolBase):
             if edit_mode == "replace":
                 found = False
                 for cell in cells:
-                    if cell_id and cell.get('id') == cell_id:
+                    # Check both cell.id and cell.metadata.id for compatibility
+                    cell_id_match = (cell.get('id') == cell_id or 
+                                    cell.get('metadata', {}).get('id') == cell_id)
+                    if cell_id and cell_id_match:
                         cell['source'] = new_source.splitlines(True)
                         if cell_type:
                             cell['cell_type'] = cell_type
@@ -1112,7 +1150,9 @@ class NotebookEditTool(ToolBase):
                 if cell_id:
                     # Insert after specific cell
                     for i, cell in enumerate(cells):
-                        if cell.get('id') == cell_id:
+                        cell_id_match = (cell.get('id') == cell_id or 
+                                        cell.get('metadata', {}).get('id') == cell_id)
+                        if cell_id_match:
                             cells.insert(i + 1, new_cell)
                             break
                 else:
@@ -1120,7 +1160,9 @@ class NotebookEditTool(ToolBase):
                     cells.insert(0, new_cell)
                     
             elif edit_mode == "delete":
-                cells = [c for c in cells if c.get('id') != cell_id]
+                # Filter out cells with matching ID
+                cells = [c for c in cells if not (c.get('id') == cell_id or 
+                                                  c.get('metadata', {}).get('id') == cell_id)]
                 notebook['cells'] = cells
             
             # Write back
@@ -1170,10 +1212,37 @@ Usage notes:
     
     def execute(self, url: str, prompt: str) -> str:
         try:
+            from urllib.parse import urlparse
+            
+            # Validate URL
+            parsed = urlparse(url)
+            
+            # Check for malformed URLs
+            if not parsed.scheme:
+                return f"Error: Invalid URL - missing scheme (http:// or https://)"
+            
+            if parsed.scheme not in ['http', 'https']:
+                return f"Error: Invalid URL - unsupported scheme '{parsed.scheme}'"
+            
+            if not parsed.netloc:
+                return f"Error: Invalid URL - missing domain"
+            
+            # Check for invalid domain format
+            if '..' in parsed.netloc:
+                return f"Error: Invalid URL - malformed domain"
+            
+            # Check for invalid ports
+            if parsed.port:
+                if parsed.port < 1 or parsed.port > 65535:
+                    return f"Error: Invalid URL - invalid port number"
+            
+            # Upgrade HTTP to HTTPS
+            if parsed.scheme == 'http':
+                url = url.replace('http://', 'https://', 1)
+                
             # Check for restricted domains
             restricted_domains = ['docs.python.org']  # Example restriction
-            from urllib.parse import urlparse
-            domain = urlparse(url).netloc
+            domain = parsed.netloc
             
             if any(d in domain for d in restricted_domains):
                 return f"Claude Code is unable to fetch from {domain}"
@@ -1428,14 +1497,37 @@ Usage notes:
     
     def execute(self, query: str, allowed_domains: Optional[List[str]] = None, 
                 blocked_domains: Optional[List[str]] = None) -> str:
+        # Validate query length
+        if len(query) < 2:
+            return "Error: Query too short (minimum 2 characters)"
+        
         # In a real implementation, this would perform web search
         # For now, return simulated results
+        output = f"Web search results for query: \"{query}\"\n\n"
+        
+        # Add domain filtering info if provided
+        if allowed_domains:
+            output += f"Filtering results to allowed domains: {', '.join(allowed_domains)}\n"
+        if blocked_domains:
+            output += f"Excluding results from blocked domains: {', '.join(blocked_domains)}\n"
+        
+        if allowed_domains or blocked_domains:
+            output += "\n"
+        
+        # Simulated search results in expected format
+        output += "1. Example Result 1\n"
+        output += "   URL: https://example.com/result1\n"
+        output += f"   Summary: First search result for {query}\n\n"
+        
+        output += "2. Example Result 2\n"
+        output += "   URL: https://example.com/result2\n"
+        output += f"   Summary: Second search result for {query}\n\n"
+        
+        # Also include JSON format for backward compatibility
         results = [
             {"title": f"Result 1 for {query}", "url": "https://example.com/1"},
             {"title": f"Result 2 for {query}", "url": "https://example.com/2"}
         ]
-        
-        output = f"Web search results for query: \"{query}\"\n\n"
         output += f"Links: {json.dumps(results)}\n\n"
         output += "Based on the search results, here's what I found:\n[Search results summary would go here]"
         
