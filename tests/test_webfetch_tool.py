@@ -41,11 +41,13 @@ class TestWebFetchTool:
         assert_schema_matches_expected(schema, "WebFetch")
         
     def test_webfetch_tool_execution(self):
+        """Test that WebFetchTool executes with mocked requests"""
         tool = WebFetchTool()
         result = tool.execute(
             "https://example.com",
             "Extract main content"
         )
+        # With our mocks, this should return content without actual network calls
         assert "Fetched content from" in result
         assert "https://example.com" in result
         assert "Extract main content" in result
@@ -105,13 +107,14 @@ class TestWebFetchTool:
         assert "redirect" in result.lower() or "bit.ly" in result
     
     def test_webfetch_tool_timeout_handling(self):
+        """Test timeout handling with mocked timeout"""
         tool = WebFetchTool()
-        # Test with a URL that might timeout
+        # This URL is mocked to timeout in conftest.py
         result = tool.execute(
             "https://httpstat.us/200?sleep=60000",  # 60 second delay
             "Test timeout"
         )
-        assert "Error:" in result or "timeout" in result.lower()
+        assert "Error:" in result or "timeout" in result.lower() or "timed out" in result.lower()
     
     def test_webfetch_tool_cache_behavior(self):
         tool = WebFetchTool()

@@ -9,7 +9,7 @@ This file is part of the klaude project.
 """
 
 import pytest
-from unittest.mock import patch, Mock
+from unittest.mock import patch, Mock, MagicMock
 import json
 
 
@@ -89,3 +89,69 @@ def mock_websearch_api():
         # Also mock the GOOGLE_SEARCH_KEY environment variable
         with patch.dict('os.environ', {'GOOGLE_SEARCH_KEY': 'test-key'}):
             yield
+
+
+@pytest.fixture(autouse=True)
+def mock_webfetch_requests():
+    """
+    Mock HTTP requests for WebFetchTool tests.
+    This fixture prevents all external HTTP requests during tests.
+    """
+    def mock_get(url, headers=None, timeout=None, allow_redirects=True):
+        """Mock response for HTTP GET requests"""
+        mock_response = Mock()
+        mock_response.history = []  # No redirects by default
+        
+        # Parse URL to check for specific test cases
+        if 'example.com' in url:
+            mock_response.status_code = 200
+            mock_response.headers = {'Content-Type': 'text/html'}
+            mock_response.text = '<html><body><h1>Example Domain</h1><p>This domain is for use in illustrative examples in documents.</p></body></html>'
+            mock_response.url = url
+        elif 'httpstat.us/200?sleep=60000' in url:
+            # Simulate timeout
+            import requests
+            raise requests.exceptions.Timeout('Request timed out')
+        elif 'bit.ly' in url:
+            # Simulate redirect
+            mock_response.status_code = 200
+            mock_response.headers = {'Content-Type': 'text/html'}
+            mock_response.text = '<html><body>Redirected content</body></html>'
+            mock_response.url = 'https://example.com/redirected'
+            # Add redirect history
+            redirect_resp = Mock()
+            redirect_resp.status_code = 301
+            redirect_resp.url = url
+            mock_response.history = [redirect_resp]
+        elif url == 'not-a-valid-url':
+            # Invalid URL
+            import requests
+            raise requests.exceptions.InvalidURL('Invalid URL')
+        elif '://' not in url or url.startswith('://'):
+            # Malformed URL
+            import requests
+            raise requests.exceptions.InvalidURL('Invalid URL format')
+        else:
+            # Default response
+            mock_response.status_code = 200
+            mock_response.headers = {'Content-Type': 'text/html'}
+            mock_response.text = f'<html><body><p>Mock content for {url}</p></body></html>'
+            mock_response.url = url
+        
+        mock_response.raise_for_status = Mock()
+        return mock_response
+    
+    # Apply the mock to requests.get
+    with patch('requests.get', side_effect=mock_get):
+        yield
+
+
+@pytest.fixture(autouse=True)
+def mock_task_tool_llm():
+    """
+    Mock LLM calls for TaskTool tests.
+    This ensures TaskTool doesn't make external API calls during tests.
+    """
+    # Mock the OpenAI API key check to simulate test environment
+    with patch.dict('os.environ', {'OPENAI_API_KEY': ''}):
+        yield
