@@ -1,0 +1,1 @@
+这个项目使用 uv 管理，如果需要测试，请用 `uv run xxx.py` 来替代 `python xxx.py`
