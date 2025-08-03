@@ -25,8 +25,12 @@ import time
 from collections import defaultdict
 import requests
 import markdownify
+from dotenv import load_dotenv
 
 from .tool_base import ToolBase, create_json_schema, create_property_schema
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 class TaskTool(ToolBase):
@@ -1686,34 +1690,103 @@ Usage notes:
         if len(query) < 2:
             return "Error: Query too short (minimum 2 characters)"
         
-        # In a real implementation, this would perform web search
-        # For now, return simulated results
-        output = f"Web search results for query: \"{query}\"\n\n"
+        # Get API key from environment
+        GOOGLE_SEARCH_KEY = os.getenv("GOOGLE_SEARCH_KEY")
+        if not GOOGLE_SEARCH_KEY:
+            return "Error: GOOGLE_SEARCH_KEY environment variable not set"
         
-        # Add domain filtering info if provided
-        if allowed_domains:
-            output += f"Filtering results to allowed domains: {', '.join(allowed_domains)}\n"
-        if blocked_domains:
-            output += f"Excluding results from blocked domains: {', '.join(blocked_domains)}\n"
+        # Prepare API request
+        url = 'https://google.serper.dev/search'
+        headers = {
+            'X-API-KEY': GOOGLE_SEARCH_KEY,
+            'Content-Type': 'application/json',
+        }
+        data = {
+            "q": query,
+            "num": 10,
+            "extendParams": {
+                "country": "en",
+                "page": 1,
+            },
+        }
         
-        if allowed_domains or blocked_domains:
-            output += "\n"
+        # Perform search with retries
+        for i in range(5):
+            try:
+                response = requests.post(url, headers=headers, data=json.dumps(data))
+                results = response.json()
+                break
+            except Exception as e:
+                if i == 4:
+                    return f"Google search timeout, please try again later."
         
-        # Simulated search results in expected format
-        output += "1. Example Result 1\n"
-        output += "   URL: https://example.com/result1\n"
-        output += f"   Summary: First search result for {query}\n\n"
+        if response.status_code != 200:
+            return f"Error: {response.status_code} - {response.text}"
         
-        output += "2. Example Result 2\n"
-        output += "   URL: https://example.com/result2\n"
-        output += f"   Summary: Second search result for {query}\n\n"
-        
-        # Also include JSON format for backward compatibility
-        results = [
-            {"title": f"Result 1 for {query}", "url": "https://example.com/1"},
-            {"title": f"Result 2 for {query}", "url": "https://example.com/2"}
-        ]
-        output += f"Links: {json.dumps(results)}\n\n"
-        output += "Based on the search results, here's what I found:\n[Search results summary would go here]"
-        
-        return output
+        try:
+            if "organic" not in results:
+                return f"No results found for query: '{query}'. Use a less specific query."
+            
+            # Format search results
+            output = f"Web search results for query: \"{query}\"\n\n"
+            
+            # Add domain filtering info if provided
+            if allowed_domains:
+                output += f"Filtering results to allowed domains: {', '.join(allowed_domains)}\n"
+            if blocked_domains:
+                output += f"Excluding results from blocked domains: {', '.join(blocked_domains)}\n"
+            
+            if allowed_domains or blocked_domains:
+                output += "\n"
+            
+            # Process organic search results
+            web_snippets = []
+            json_results = []
+            idx = 0
+            
+            if "organic" in results:
+                for page in results["organic"]:
+                    # Check domain filtering
+                    link = page.get('link', '')
+                    domain = link.split('/')[2] if '/' in link else ''
+                    
+                    if allowed_domains and not any(domain.endswith(d) for d in allowed_domains):
+                        continue
+                    if blocked_domains and any(domain.endswith(d) for d in blocked_domains):
+                        continue
+                    
+                    idx += 1
+                    
+                    # Format result entry
+                    output += f"{idx}. {page.get('title', 'No title')}\n"
+                    output += f"   URL: {link}\n"
+                    
+                    # Add snippet if available
+                    snippet = page.get('snippet', '')
+                    if snippet:
+                        output += f"   Summary: {snippet}\n"
+                    
+                    # Add date if available
+                    if 'date' in page:
+                        output += f"   Date: {page['date']}\n"
+                    
+                    output += "\n"
+                    
+                    # Add to JSON format for backward compatibility
+                    json_results.append({
+                        "title": page.get('title', 'No title'),
+                        "url": link
+                    })
+            
+            # Add JSON format for backward compatibility
+            if json_results:
+                output += f"Links: {json.dumps(json_results)}\n\n"
+            
+            # Add summary
+            output += f"Based on the search results, here's what I found:\n"
+            output += f"Found {idx} results for '{query}'."
+            
+            return output
+            
+        except Exception as e:
+            return f"No results found for '{query}'. Try with a more general query."
