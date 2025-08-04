@@ -13,7 +13,7 @@ import json
 import platform
 import subprocess
 from datetime import datetime
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from openai import AzureOpenAI, OpenAI
 from rich.console import Console
@@ -21,7 +21,6 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.syntax import Syntax
 from dotenv import load_dotenv
-import asyncio
 
 from .tool_base import ToolRegistry
 from .tools_impl import (
@@ -30,7 +29,6 @@ from .tools_impl import (
     WriteTool, NotebookReadTool, NotebookEditTool, 
     WebFetchTool, TodoWriteTool, WebSearchTool
 )
-from .websocket_server import start_server, WebSocketManager
 
 # Load .env file
 load_dotenv()
@@ -39,14 +37,6 @@ load_dotenv()
 class Agent:
     """Main agent class that handles conversations and tool execution"""
     
-    def _send_to_websocket_sync(self, coro):
-        """Helper to run async WebSocket operations from sync context"""
-        # Since WebSocket server runs in its own thread with its own event loop,
-        # we need to schedule the coroutine in that loop
-        if self.ws_manager:
-            # Get the event loop from the WebSocket thread
-            # The WebSocket manager should have access to its loop
-            asyncio.run_coroutine_threadsafe(coro, self.ws_manager._loop)
     
     def _get_environment_info(self) -> str:
         """Get current environment information dynamically"""
@@ -142,7 +132,7 @@ Recent commits:
         
         return git_status
     
-    def __init__(self, ws_manager: Optional[WebSocketManager] = None):
+    def __init__(self):
         self.console = Console()
         self.client = OpenAI(
             api_key=os.getenv("OPENAI_API_KEY"),
@@ -154,9 +144,6 @@ Recent commits:
         #     api_version=os.getenv("OPENAI_API_VERSION"),
         # )
         
-        # WebSocket manager for real-time updates
-        self.ws_manager = ws_manager
-        self.ws_enabled = ws_manager is not None
         
         # Initialize tool registry
         self.tool_registry = ToolRegistry()
@@ -184,7 +171,7 @@ Recent commits:
     def _register_tools(self):
         """Register all available tools"""
         tools = [
-            TaskTool(ws_manager=self.ws_manager),  # Pass WebSocket manager to TaskTool
+            TaskTool(),
             BashTool(),
             GlobTool(),
             GrepTool(),
@@ -416,9 +403,6 @@ assistant: Clients are marked as failed in the `connectToServer` function in src
         """Run the agent with a user prompt"""
         self.console.print(Panel(prompt, title="[bold green]User", border_style="green"))
         
-        # Send to WebSocket if enabled
-        if self.ws_enabled:
-            self._send_to_websocket_sync(self.ws_manager.send_user_message(prompt))
         
         # Add user message with system reminders like Claude Code
         user_content = [
@@ -447,9 +431,6 @@ assistant: Clients are marked as failed in the `connectToServer` function in src
             # Display message content if present
             if assistant_message.content:
                 self._display_assistant_message(assistant_message.content)
-                # Send to WebSocket if enabled
-                if self.ws_enabled:
-                    self._send_to_websocket_sync(self.ws_manager.send_assistant_message(assistant_message.content))
             
             # Handle tool calls if present
             if hasattr(assistant_message, 'tool_calls') and assistant_message.tool_calls:
@@ -489,14 +470,14 @@ assistant: Clients are marked as failed in the `connectToServer` function in src
     def _execute_tool_call(self, tool_call):
         """Execute a tool call"""
         tool_name = tool_call.function.name
-        tool_args = json.loads(tool_call.function.arguments)
+        try:
+            tool_args = json.loads(tool_call.function.arguments)
+        except json.JSONDecodeError as e:
+            error_msg = f"Failed to parse tool arguments: {str(e)}"
+            self.console.print(f"[red]Error: {error_msg}[/red]")
+            self.console.print(f"[red]Raw arguments: {tool_call.function.arguments}[/red]")
+            return tool_call.id, error_msg
         
-        # Send tool call to WebSocket if enabled
-        if self.ws_enabled:
-            description = tool_args.get('description') if tool_name == "Task" else None
-            self._send_to_websocket_sync(self.ws_manager.send_tool_call(
-                tool_name, tool_args, tool_call.id, description
-            ))
         
         # Special handling for Task tool to show description
         if tool_name == "Task" and "description" in tool_args:
@@ -525,11 +506,6 @@ assistant: Clients are marked as failed in the `connectToServer` function in src
                 # Regular output
                 self.console.print(Panel(result, title=f"[yellow]{tool_name} Output", border_style="yellow", expand=False))
             
-            # Send tool result to WebSocket if enabled
-            if self.ws_enabled:
-                self._send_to_websocket_sync(self.ws_manager.send_tool_result(
-                    tool_call.id, result
-                ))
             
             # Add tool result to messages
             self.messages.append({
@@ -542,11 +518,6 @@ assistant: Clients are marked as failed in the `connectToServer` function in src
             error_msg = f"Error executing {tool_name}: {str(e)}"
             self.console.print(f"[red]{error_msg}[/red]")
             
-            # Send error to WebSocket if enabled
-            if self.ws_enabled:
-                self._send_to_websocket_sync(self.ws_manager.send_tool_result(
-                    tool_call.id, "", error_msg
-                ))
             
             self.messages.append({
                 "role": "tool",

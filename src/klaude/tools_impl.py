@@ -39,9 +39,7 @@ load_dotenv()
 class TaskTool(ToolBase):
     """Launch a new agent to handle complex tasks"""
     
-    def __init__(self, ws_manager=None):
-        # Store WebSocket manager for sub-agents
-        self.ws_manager = ws_manager
+    def __init__(self):
         self.current_task_id = None
         # Load custom agent configurations
         self.agent_config_loader = AgentConfigLoader()
@@ -77,37 +75,22 @@ class TaskTool(ToolBase):
     def _execute_tool_for_subagent(self, sub_agent, tool_call):
         """Execute a single tool call for a subagent and return (tool_call_id, result)"""
         tool_name = tool_call.function.name
-        tool_args = json.loads(tool_call.function.arguments)
         
-        # Send tool call to WebSocket if enabled
-        if self.ws_manager and hasattr(self.ws_manager, '_loop') and self.ws_manager._loop:
-            import asyncio
-            description = tool_args.get('description') if tool_name == "Task" else None
-            asyncio.run_coroutine_threadsafe(
-                self.ws_manager.send_tool_call(tool_name, tool_args, tool_call.id, description, self.current_task_id),
-                self.ws_manager._loop
-            )
+        try:
+            # Parse tool arguments with better error handling
+            tool_args = json.loads(tool_call.function.arguments)
+        except json.JSONDecodeError as e:
+            error_msg = f"Failed to parse tool arguments for {tool_name}: {str(e)}"
+            print(f"[ERROR] {error_msg}")
+            print(f"[ERROR] Raw arguments: {tool_call.function.arguments}")
+            return (tool_call.id, error_msg)
         
         try:
             result = sub_agent.tool_registry.execute_tool(tool_name, **tool_args)
             
-            # Send tool result to WebSocket if enabled
-            if self.ws_manager and hasattr(self.ws_manager, '_loop') and self.ws_manager._loop:
-                import asyncio
-                asyncio.run_coroutine_threadsafe(
-                    self.ws_manager.send_tool_result(tool_call.id, result),
-                    self.ws_manager._loop
-                )
             
             return tool_call.id, result
         except Exception as e:
-            # Send error to WebSocket if enabled
-            if self.ws_manager and hasattr(self.ws_manager, '_loop') and self.ws_manager._loop:
-                import asyncio
-                asyncio.run_coroutine_threadsafe(
-                    self.ws_manager.send_tool_result(tool_call.id, "", str(e)),
-                    self.ws_manager._loop
-                )
             raise e
     
     def get_parameters_schema(self) -> Dict[str, Any]:
@@ -201,7 +184,7 @@ assistant: "I'm going to use the Task tool to launch the with the greeting-respo
             return json.dumps({
                 "type": "text",
                 "text": f"Task '{description}' completed by {subagent_type} agent.\nPrompt: {prompt}\n\nResult: Task completed successfully."
-            })
+            }, ensure_ascii=False)
         
         try:
             # Import here to avoid circular imports
@@ -211,16 +194,9 @@ assistant: "I'm going to use the Task tool to launch the with the greeting-respo
             task_id = str(uuid.uuid4())
             self.current_task_id = task_id
             
-            # Send task start event if WebSocket is enabled
-            if self.ws_manager and hasattr(self.ws_manager, '_loop') and self.ws_manager._loop:
-                import asyncio
-                asyncio.run_coroutine_threadsafe(
-                    self.ws_manager.send_task_start(task_id, description),
-                    self.ws_manager._loop
-                )
             
-            # Create a new agent instance with WebSocket manager
-            sub_agent = Agent(ws_manager=self.ws_manager)
+            # Create a new agent instance
+            sub_agent = Agent()
             
             # Remove TaskTool from sub-agent to prevent recursive Task calls
             # We need to re-register tools without TaskTool
@@ -272,9 +248,13 @@ assistant: "I'm going to use the Task tool to launch the with the greeting-respo
                     # Print tool calls with subagent info
                     for tool_call in assistant_message.tool_calls:
                         tool_name = tool_call.function.name
-                        tool_args = json.loads(tool_call.function.arguments)
-                        sub_agent.console.print(f"[blue]Sub-agent ({subagent_type}: {description}) calling tool: {tool_name}[/blue]")
-                        sub_agent.console.print(f"[dim]Arguments: {json.dumps(tool_args, indent=2)}[/dim]")
+                        try:
+                            tool_args = json.loads(tool_call.function.arguments)
+                            sub_agent.console.print(f"[blue]Sub-agent ({subagent_type}: {description}) calling tool: {tool_name}[/blue]")
+                            sub_agent.console.print(f"[dim]Arguments: {json.dumps(tool_args, indent=2, ensure_ascii=False)}[/dim]")
+                        except json.JSONDecodeError as e:
+                            sub_agent.console.print(f"[red]Error parsing tool arguments for {tool_name}: {str(e)}[/red]")
+                            sub_agent.console.print(f"[red]Raw arguments: {tool_call.function.arguments}[/red]")
                     
                     # Execute tool calls concurrently using ThreadPoolExecutor
                     with ThreadPoolExecutor() as executor:
@@ -316,13 +296,6 @@ assistant: "I'm going to use the Task tool to launch the with the greeting-respo
                 # Get next completion
                 response = sub_agent._get_completion()
             
-            # Send task end event if WebSocket is enabled
-            if self.ws_manager and hasattr(self.ws_manager, '_loop') and self.ws_manager._loop:
-                import asyncio
-                asyncio.run_coroutine_threadsafe(
-                    self.ws_manager.send_task_end(task_id),
-                    self.ws_manager._loop
-                )
             
             # Compile the result
             result_text = str(result_messages[-1]) if result_messages else "Task completed without output."
@@ -330,13 +303,13 @@ assistant: "I'm going to use the Task tool to launch the with the greeting-respo
             return json.dumps({
                 "type": "text",
                 "text": f"[{subagent_type.upper()} AGENT RESULT for '{description}']\n\n{result_text}"
-            })
+            }, ensure_ascii=False)
             
         except Exception as e:
             return json.dumps({
                 "type": "error",
                 "text": f"Error executing task '{description}': {str(e)}"
-            })
+            }, ensure_ascii=False)
 
 
 class BashTool(ToolBase):
@@ -1923,7 +1896,7 @@ Usage notes:
             
             # Add JSON format for backward compatibility
             if json_results:
-                output += f"Links: {json.dumps(json_results)}\n\n"
+                output += f"Links: {json.dumps(json_results, ensure_ascii=False)}\n\n"
             
             # Add summary
             output += f"Based on the search results, here's what I found:\n"
