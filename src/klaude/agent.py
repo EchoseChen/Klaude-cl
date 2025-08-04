@@ -485,6 +485,9 @@ assistant: Clients are marked as failed in the `connectToServer` function in src
         else:
             self.console.print(f"\n[bold yellow]Executing {tool_name}:[/bold yellow]")
         
+        # Print tool call arguments
+        self.console.print(f"[dim]Tool arguments: {json.dumps(tool_args, indent=2)}[/dim]")
+        
         # Special handling for certain tools
         if tool_name == "Bash":
             if "command" in tool_args:
